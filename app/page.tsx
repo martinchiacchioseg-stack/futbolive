@@ -1,36 +1,21 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { Header } from "@/components/navigation/Header";
 import { BottomNav, NavTab } from "@/components/navigation/BottomNav";
 import { MatchCard } from "@/components/matches/MatchCard";
 import { ClubHero, FormResult } from "@/components/club/ClubHero";
 import { StandingsTable, TeamStanding } from "@/components/tables/StandingsTable";
 import { BracketView } from "@/components/cup/BracketView";
-import { SuperAdminWidget } from "@/components/admin/SuperAdminWidget";
-import { Flame, Sparkles } from "lucide-react";
+import { Flame, Sparkles, Building2, ShieldCheck, Filter } from "lucide-react";
+import { SaasStore } from "@/lib/saas-store";
+import { AuthUser, Tenant } from "@/types/saas";
+import { POPULAR_CLUBS, AVAILABLE_TOURNAMENTS } from "@/lib/constants";
+import { LoginModal } from "@/components/auth/LoginModal";
+import { OnboardingModal } from "@/components/auth/OnboardingModal";
+import { SuperAdminDashboard } from "@/components/admin/SuperAdminDashboard";
 
-// Datos de prueba deportivos con estética de producto comercial
-const MOCK_CLUB = {
-  id: "boca",
-  name: "Boca Juniors",
-  shortName: "BOC",
-  logo: "https://upload.wikimedia.org/wikipedia/commons/4/41/CABJ-escudo-2020.png",
-  primaryColor: "#0D2240", // Azul oro profundo
-  tablePosition: 2,
-  tablePoints: 34,
-  leagueName: "Liga Profesional Argentina",
-  recentForm: ["W", "W", "D", "W", "L"] as const,
-  nextMatch: {
-    opponentName: "Racing Club",
-    opponentLogo: "https://upload.wikimedia.org/wikipedia/commons/5/56/Escudo_de_Racing_Club_%282014%29.svg",
-    dateIso: "2026-10-22T21:30:00Z",
-    isHome: true,
-    competition: "Liga Profesional",
-  },
-};
-
-const MOCK_STANDINGS: TeamStanding[] = [
+const INITIAL_STANDINGS: TeamStanding[] = [
   {
     rank: 1,
     team: { id: "river", name: "River Plate", logo: "https://upload.wikimedia.org/wikipedia/commons/a/ac/Escudo_del_C_A_River_Plate.svg" },
@@ -58,7 +43,7 @@ const MOCK_STANDINGS: TeamStanding[] = [
   },
 ];
 
-const MOCK_BRACKET = [
+const INITIAL_BRACKET = [
   {
     name: "Cuartos de Final",
     matches: [
@@ -91,19 +76,100 @@ const MOCK_BRACKET = [
 
 export default function HomePage() {
   const [activeTab, setActiveTab] = useState<NavTab>("home");
+  const [currentUser, setCurrentUser] = useState<AuthUser | null>(null);
+  const [currentTenant, setCurrentTenant] = useState<Tenant | null>(null);
+
+  // Modales
+  const [showLoginModal, setShowLoginModal] = useState(false);
+  const [showAdminDashboard, setShowAdminDashboard] = useState(false);
+
+  // Simulación
   const [simulatedGoal, setSimulatedGoal] = useState<string | null>(null);
-  const [showAdminPanel, setShowAdminPanel] = useState(false);
+
+  const refreshSession = () => {
+    const user = SaasStore.getCurrentUser();
+    setCurrentUser(user);
+    if (user?.tenantId) {
+      const tenants = SaasStore.getTenants();
+      const t = tenants.find((item) => item.id === user.tenantId);
+      setCurrentTenant(t || null);
+    } else {
+      setCurrentTenant(null);
+    }
+  };
+
+  useEffect(() => {
+    refreshSession();
+  }, []);
 
   const triggerGoal = () => {
-    setSimulatedGoal("Boca Juniors");
+    const clubName = currentUser?.favoriteClub?.name || "Boca Juniors";
+    setSimulatedGoal(clubName);
     setTimeout(() => {
       setSimulatedGoal(null);
-    }, 4000);
+    }, 4500);
+  };
+
+  // Determinar torneos permitidos para el usuario actual
+  const allowedTournamentIds = currentTenant
+    ? currentTenant.allowedTournaments
+    : AVAILABLE_TOURNAMENTS.map((t) => t.id);
+
+  const canShowLibertadores = allowedTournamentIds.includes("copa_libertadores");
+  const canShowLiga = allowedTournamentIds.includes("liga_profesional");
+
+  // Configuración del Club Hero reactiva al cuadro del usuario
+  const userClub = currentUser?.favoriteClub || POPULAR_CLUBS[0];
+  const activeClubHeroData = {
+    id: userClub.id,
+    name: userClub.name,
+    shortName: userClub.shortName,
+    logo: userClub.logo,
+    primaryColor: userClub.primaryColor,
+    tablePosition: 2,
+    tablePoints: 34,
+    leagueName: userClub.leagueName,
+    recentForm: ["W", "W", "D", "W", "L"] as FormResult[],
+    nextMatch: {
+      opponentName: userClub.id === "boca" ? "Racing Club" : "Boca Juniors",
+      opponentLogo: userClub.id === "boca"
+        ? "https://upload.wikimedia.org/wikipedia/commons/5/56/Escudo_de_Racing_Club_%282014%29.svg"
+        : "https://upload.wikimedia.org/wikipedia/commons/4/41/CABJ-escudo-2020.png",
+      dateIso: "2026-10-22T21:30:00Z",
+      isHome: true,
+      competition: "Liga Profesional",
+    },
   };
 
   return (
     <div className="min-h-screen bg-[#0A0E13] text-[#F8FAFC] pb-24 md:pb-12">
-      <Header onOpenAdmin={() => setShowAdminPanel(!showAdminPanel)} />
+      <Header
+        currentUser={currentUser}
+        onOpenLogin={() => setShowLoginModal(true)}
+        onOpenAdmin={() => setShowAdminDashboard(true)}
+        onLogout={() => {
+          SaasStore.logout();
+          refreshSession();
+        }}
+      />
+
+      {/* Banner de Negocio SaaS Activo */}
+      {currentTenant && (
+        <div className="bg-[#11171F] border-b border-[rgba(255,255,255,0.06)] px-4 py-2 text-xs">
+          <div className="max-w-4xl mx-auto flex items-center justify-between text-[#94A3B8]">
+            <div className="flex items-center gap-2">
+              <Building2 className="w-3.5 h-3.5 text-[#1FE07A]" />
+              <span className="text-[#CBD5E1] font-semibold">{currentTenant.name}</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <span className="text-[11px] text-[#64748B]">
+                {currentTenant.allowedTournaments.length} torneos asignados
+              </span>
+              <span className="w-1.5 h-1.5 rounded-full bg-[#1FE07A]" />
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Selector de Fechas / Filtro Rápido */}
       <section className="border-b border-[rgba(255,255,255,0.06)] bg-[#0A0E13]/60 py-2.5 px-4 overflow-x-auto scrollbar-none">
@@ -124,32 +190,42 @@ export default function HomePage() {
       </section>
 
       <main className="max-w-4xl mx-auto px-4 pt-5 space-y-6">
-        {/* Banner de simulación interactiva */}
-        <div className="flex items-center justify-between p-3 rounded-xl bg-[#172029]/80 border border-[#1FE07A]/30">
-          <div className="flex items-center gap-2 text-xs">
-            <Sparkles className="w-4 h-4 text-[#1FE07A]" />
-            <span className="text-[#CBD5E1]">Simulación de microinteracción:</span>
+        {/* Banner de Control Rápido de Demostración */}
+        <div className="flex flex-col sm:flex-row items-center justify-between gap-3 p-3 rounded-2xl bg-[#172029]/80 border border-[#1FE07A]/30">
+          <div className="flex items-center gap-2 text-xs text-[#CBD5E1]">
+            <Sparkles className="w-4 h-4 text-[#1FE07A] flex-shrink-0" />
+            <span>
+              {currentUser ? (
+                <>Conectado como: <strong>{currentUser.email}</strong> ({currentUser.favoriteClub ? `Hincha de ${currentUser.favoriteClub.name}` : "Perfil pendiente"})</>
+              ) : (
+                <>Sesión de demostración. Puedes ingresar como SuperAdmin o como cliente SaaS.</>
+              )}
+            </span>
           </div>
-          <button
-            onClick={triggerGoal}
-            className="flex items-center gap-1.5 px-3 py-1 rounded-lg bg-[#1FE07A] text-[#0A0E13] text-xs font-bold hover:brightness-110 active:scale-95 transition-transform"
-          >
-            <Flame className="w-3.5 h-3.5 fill-current" />
-            ¡Simular Gol en Vivo!
-          </button>
+
+          <div className="flex items-center gap-2 w-full sm:w-auto">
+            <button
+              onClick={() => setShowAdminDashboard(true)}
+              className="flex-1 sm:flex-initial flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-xl bg-[#11171F] border border-[rgba(255,255,255,0.1)] text-[#1FE07A] text-xs font-bold hover:bg-[#1E2833] transition-colors"
+            >
+              <ShieldCheck className="w-3.5 h-3.5" />
+              <span>Panel SuperAdmin</span>
+            </button>
+
+            <button
+              onClick={triggerGoal}
+              className="flex-1 sm:flex-initial flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-xl bg-[#1FE07A] text-[#0A0E13] text-xs font-bold hover:brightness-110 active:scale-95 transition-transform"
+            >
+              <Flame className="w-3.5 h-3.5 fill-current" />
+              <span>¡Simular Gol!</span>
+            </button>
+          </div>
         </div>
 
-        {/* Panel de administración si está activo */}
-        {showAdminPanel && (
-          <section className="animate-in fade-in slide-in-from-top-2 duration-200">
-            <SuperAdminWidget requestsUsed={820} requestsLimit={1000} activeUsers={3410} cacheHitRatio={95.8} />
-          </section>
-        )}
+        {/* 1. HÉROE DEL CLUB PERSONALIZADO */}
+        <ClubHero club={activeClubHeroData} />
 
-        {/* 1. HÉROE DEL CLUB */}
-        <ClubHero club={MOCK_CLUB} />
-
-        {/* 2. PARTIDOS DESTACADOS */}
+        {/* 2. PARTIDOS FILTRADOS SEGÚN EL NEGOCIO SAAS */}
         <section className="space-y-3">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
@@ -158,92 +234,142 @@ export default function HomePage() {
                 Partidos en Vivo & Próximos
               </h3>
             </div>
-            <span className="text-xs text-[#94A3B8]">Zona horaria: Argentina (GMT-3)</span>
+            {currentTenant && (
+              <span className="text-[11px] text-[#1FE07A] flex items-center gap-1">
+                <Filter className="w-3 h-3" />
+                <span>Filtrado por {currentTenant.name}</span>
+              </span>
+            )}
           </div>
 
           <div className="space-y-3">
-            {/* Partido En Vivo */}
-            <MatchCard
-              id="match-1"
-              competition={{
-                name: "Copa Libertadores · Cuartos Vuelta",
-                logo: "https://upload.wikimedia.org/wikipedia/commons/4/41/CABJ-escudo-2020.png",
-              }}
-              homeTeam={{
-                name: "Boca Juniors",
-                shortName: "BOC",
-                logo: "https://upload.wikimedia.org/wikipedia/commons/4/41/CABJ-escudo-2020.png",
-                score: simulatedGoal ? 2 : 1,
-              }}
-              awayTeam={{
-                name: "Palmeiras",
-                shortName: "PAL",
-                logo: "https://upload.wikimedia.org/wikipedia/commons/1/10/Palmeiras_logo.svg",
-                score: 1,
-              }}
-              status="live"
-              minute={67}
-              isUserFavorite={true}
-              recentGoalTeam={simulatedGoal || undefined}
-            />
+            {/* Partido En Vivo (Libertadores) */}
+            {canShowLibertadores && (
+              <MatchCard
+                id="match-1"
+                competition={{
+                  name: "CONMEBOL Libertadores · Cuartos Vuelta",
+                  logo: "https://upload.wikimedia.org/wikipedia/commons/4/41/CABJ-escudo-2020.png",
+                }}
+                homeTeam={{
+                  name: userClub.name,
+                  shortName: userClub.shortName,
+                  logo: userClub.logo,
+                  score: simulatedGoal ? 2 : 1,
+                }}
+                awayTeam={{
+                  name: "Palmeiras",
+                  shortName: "PAL",
+                  logo: "https://upload.wikimedia.org/wikipedia/commons/1/10/Palmeiras_logo.svg",
+                  score: 1,
+                }}
+                status="live"
+                minute={73}
+                isUserFavorite={true}
+                recentGoalTeam={simulatedGoal || undefined}
+              />
+            )}
 
-            {/* Partido Programado */}
-            <MatchCard
-              id="match-2"
-              competition={{
-                name: "Liga Profesional · Fecha 17",
-                logo: "https://upload.wikimedia.org/wikipedia/commons/a/ac/Escudo_del_C_A_River_Plate.svg",
-              }}
-              homeTeam={{
-                name: "River Plate",
-                shortName: "RIV",
-                logo: "https://upload.wikimedia.org/wikipedia/commons/a/ac/Escudo_del_C_A_River_Plate.svg",
-              }}
-              awayTeam={{
-                name: "Independiente",
-                shortName: "IND",
-                logo: "https://upload.wikimedia.org/wikipedia/commons/d/db/Escudo_del_Club_Atl%C3%A9tico_Independiente.svg",
-              }}
-              status="scheduled"
-              scheduledTime="Jue 22 · 21:30"
-            />
+            {/* Partido Programado (Liga Profesional) */}
+            {canShowLiga && (
+              <MatchCard
+                id="match-2"
+                competition={{
+                  name: "Liga Profesional · Fecha 17",
+                  logo: "https://upload.wikimedia.org/wikipedia/commons/a/ac/Escudo_del_C_A_River_Plate.svg",
+                }}
+                homeTeam={{
+                  name: "River Plate",
+                  shortName: "RIV",
+                  logo: "https://upload.wikimedia.org/wikipedia/commons/a/ac/Escudo_del_C_A_River_Plate.svg",
+                }}
+                awayTeam={{
+                  name: "Independiente",
+                  shortName: "IND",
+                  logo: "https://upload.wikimedia.org/wikipedia/commons/d/db/Escudo_del_Club_Atl%C3%A9tico_Independiente.svg",
+                }}
+                status="scheduled"
+                scheduledTime="Jue 22 · 21:30"
+              />
+            )}
 
-            {/* Partido Finalizado */}
-            <MatchCard
-              id="match-3"
-              competition={{
-                name: "Liga Profesional · Fecha 16",
-              }}
-              homeTeam={{
-                name: "San Lorenzo",
-                shortName: "SLO",
-                logo: "https://upload.wikimedia.org/wikipedia/commons/0/07/Escudo_del_Club_Atl%C3%A9tico_San_Lorenzo_de_Almagro.svg",
-                score: 0,
-              }}
-              awayTeam={{
-                name: "Huracán",
-                shortName: "HUR",
-                logo: "https://upload.wikimedia.org/wikipedia/commons/2/23/Huracan_logo.svg",
-                score: 0,
-              }}
-              status="finished"
-            />
+            {/* Partido Finalizado (Liga Profesional) */}
+            {canShowLiga && (
+              <MatchCard
+                id="match-3"
+                competition={{
+                  name: "Liga Profesional · Fecha 16",
+                }}
+                homeTeam={{
+                  name: "San Lorenzo",
+                  shortName: "SLO",
+                  logo: "https://upload.wikimedia.org/wikipedia/commons/0/07/Escudo_del_Club_Atl%C3%A9tico_San_Lorenzo_de_Almagro.svg",
+                  score: 0,
+                }}
+                awayTeam={{
+                  name: "Huracán",
+                  shortName: "HUR",
+                  logo: "https://upload.wikimedia.org/wikipedia/commons/2/23/Huracan_logo.svg",
+                  score: 0,
+                }}
+                status="finished"
+              />
+            )}
+
+            {!canShowLiga && !canShowLibertadores && (
+              <div className="p-8 text-center rounded-2xl bg-[#11171F] border border-[rgba(255,255,255,0.06)] text-xs text-[#94A3B8]">
+                Tu negocio no tiene torneos activos seleccionados por el Superadministrador.
+              </div>
+            )}
           </div>
         </section>
 
-        {/* 3. TABLA DE POSICIONES */}
-        <section>
-          <StandingsTable standings={MOCK_STANDINGS} leagueName="Liga Profesional" />
-        </section>
+        {/* 3. TABLA DE POSICIONES (Si tiene habilitada la liga) */}
+        {canShowLiga && (
+          <section>
+            <StandingsTable standings={INITIAL_STANDINGS} leagueName="Liga Profesional Argentina" />
+          </section>
+        )}
 
-        {/* 4. CUADRO DE LLAVES (COPAS ELIMINATORIAS) */}
-        <section>
-          <BracketView cupName="Copa Libertadores 2026" rounds={MOCK_BRACKET} />
-        </section>
+        {/* 4. CUADRO DE LLAVES (Si tiene habilitada la copa) */}
+        {canShowLibertadores && (
+          <section>
+            <BracketView cupName="Copa CONMEBOL Libertadores" rounds={INITIAL_BRACKET} />
+          </section>
+        )}
       </main>
 
       {/* Navegación móvil ergonómica */}
       <BottomNav activeTab={activeTab} onChangeTab={setActiveTab} />
+
+      {/* MODAL DE LOGIN */}
+      <LoginModal
+        isOpen={showLoginModal}
+        onClose={() => setShowLoginModal(false)}
+        onLoginSuccess={(user) => {
+          refreshSession();
+        }}
+      />
+
+      {/* MODAL DE PRIMER INGRESO (CAMBIO DE CONTRASEÑA Y PERFIL OBLIGATORIO) */}
+      {currentUser && (currentUser.mustChangePassword || !currentUser.profileCompleted) && (
+        <OnboardingModal
+          user={currentUser}
+          onCompleted={(updatedUser) => {
+            refreshSession();
+          }}
+        />
+      )}
+
+      {/* DASHBOARD DE SUPERADMINISTRADOR */}
+      {showAdminDashboard && (
+        <SuperAdminDashboard
+          onClose={() => setShowAdminDashboard(false)}
+          onRefreshData={() => {
+            refreshSession();
+          }}
+        />
+      )}
     </div>
   );
 }
